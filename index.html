@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - A.H.S</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .bg-clip-text {
+            -webkit-background-clip: text;
+            background-clip: text;
+        }
+        .text-transparent {
+            color: transparent;
+        }
+        .backdrop-blur-md {
+            backdrop-filter: blur(12px);
+        }
+        .scrollbar-thin {
+            scrollbar-width: thin;
+        }
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #f3f4f6;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #6b7280;
+            border-radius: 3px;
+        }
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #374151;
+            border-radius: 18px 18px 18px 4px;
+            margin-bottom: 8px;
+            max-width: 80%;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #9CA3AF;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.5;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 py-4 px-4 flex justify-between items-center sticky top-0 z-10">
+        <!-- Removed Back button -->
+        <h1 class="text-white text-xl font-bold flex-grow text-center">AI BY A . H . S</h1>
+        <div class="w-16"></div>
+    </div>
+
+    <!-- Chat Container -->
+    <div class="flex-grow bg-gray-100 overflow-hidden flex flex-col max-w-md mx-auto w-full">
+        <div id="chatbox" class="flex flex-col flex-grow overflow-y-auto p-4 space-y-2 pb-24 scrollbar-thin">
+            <!-- Messages will be added here -->
+        </div>
+
+        <!-- Combined Input Area and Disclaimer -->
+        <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-100 z-10 border-t border-gray-200">
+            <!-- Input Form part -->
+            <div class="p-4">
+                <form id="chatForm" class="flex items-center">
+                    <div class="flex-grow relative">
+                        <div class="flex w-full bg-white rounded-full shadow-md overflow-hidden border border-gray-200 focus-within:border-blue-500 transition-colors">
+                            <button type="button" id="micButton" class="pl-4 text-gray-500 p-2 rounded-full hover:bg-gray-200 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                                </svg>
+                            </button>
+                            <input id="messageInput" type="text" class="w-full py-3 px-3 bg-transparent text-gray-800 border-none focus:outline-none" placeholder="Type your message" />
+                        </div>
+                    </div>
+                    <button type="submit" id="sendButton" class="ml-2 p-3 bg-gradient-to-r from-blue-500 to-pink-500 text-white rounded-full hover:opacity-90 transition-colors shadow-md disabled:opacity-50 hover:shadow-lg transition-shadow">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
+            <!-- Disclaimer part -->
+            <div class="pb-4 px-4 text-center text-xs text-gray-500">
+                A . H . S AI can make mistakes. So double check it.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Navigation function to go back to home page
+        function navigateToHome() {
+            window.location.href = 'index.html';
+        }
+
+        class ChatApp {
+            constructor() {
+                this.messages = [];
+                this.isLoading = false;
+                this.isListening = false;
+                this.speechSynthesis = null;
+                
+                this.chatbox = document.getElementById('chatbox');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.micButton = document.getElementById('micButton');
+                this.chatForm = document.getElementById('chatForm');
+                
+                this.initEventListeners();
+                this.messageInput.focus();
+            }
+
+            initEventListeners() {
+                this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+                this.micButton.addEventListener('click', () => this.startSpeechRecognition());
+            }
+
+            displayMessage(message, isUser, originalPrompt = null) {
+                const messageObj = { text: message, isUser, originalPrompt, isLiked: false, isDisliked: false, isSpeaking: false };
+                this.messages.push(messageObj);
+                this.renderMessage(messageObj, this.messages.length - 1);
+                this.scrollToBottom();
+            }
+
+            displayImage(imageUrl, originalPrompt = null) {
+                const messageObj = { text: "", isUser: false, isImage: true, imageUrl, originalPrompt, isLiked: false, isDisliked: false };
+                this.messages.push(messageObj);
+                this.renderMessage(messageObj, this.messages.length - 1);
+                this.scrollToBottom();
+            }
+
+            showTypingIndicator() {
+                const typingDiv = document.createElement('div');
+                typingDiv.id = 'typing-indicator';
+                typingDiv.className = 'typing-indicator';
+                typingDiv.innerHTML = '<span></span><span></span><span></span>';
+                this.chatbox.appendChild(typingDiv);
+                this.scrollToBottom();
+            }
+
+            hideTypingIndicator() {
+                const typingIndicator = document.getElementById('typing-indicator');
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+            }
+
+            renderMessage(msg, index) {
+                const messageDiv = document.createElement('div');
+                
+                if (msg.isImage) {
+                    messageDiv.innerHTML = `
+                        <div class="flex flex-col items-start">
+                            <div class="mx-auto mt-2 relative w-48 h-48 bg-center border-4 rounded-xl border-gray-700 bg-cover cursor-pointer"
+                                 style="background-image: url('${msg.imageUrl}')"
+                                 onclick="chatApp.displayLargeImage('${msg.imageUrl}')">
+                                <button class="absolute bottom-0 right-0 p-2 text-yellow-500 rounded-tl hover:bg-blue-500 hover:text-white"
+                                        onclick="event.stopPropagation(); chatApp.downloadImage('${msg.imageUrl}')">
+                                    ⬇
+                                </button>
+                            </div>
+                            <div class="flex items-center space-x-2 mt-2 ml-1">
+                                <button class="p-1 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                                        onclick="chatApp.regenerateResponse(${index})" title="Regenerate image">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full transition-colors ${msg.isLiked ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-green-300'}"
+                                        onclick="chatApp.toggleLike(${index})" title="Like">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full transition-colors ${msg.isDisliked ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-red-300'}"
+                                        onclick="chatApp.toggleDislike(${index})" title="Dislike">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const alignmentClass = msg.isUser ? 'flex justify-end' : 'flex flex-col items-start';
+                    const bubbleClass = msg.isUser 
+                        ? 'text-white bg-gradient-to-r from-blue-500 to-pink-500 rounded-bl-2xl'
+                        : 'text-white bg-gray-700 rounded-br-2xl';
+                    
+                    messageDiv.className = `mb-2 ${alignmentClass}`;
+                    
+                    const formattedText = msg.isUser ? msg.text : this.formatMessage(msg.text);
+                    
+                    messageDiv.innerHTML = `
+                        <div class="inline-block word-wrap break-word px-4 py-2 rounded-t-2xl max-w-[80%] ${bubbleClass}"
+                             style="width: fit-content; min-width: auto;">
+                            ${formattedText}
+                        </div>
+                        ${!msg.isUser ? `
+                            <div class="flex items-center space-x-2 mt-2 ml-1">
+                                <button class="p-1 rounded-full ${msg.isSpeaking ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'} hover:bg-blue-400 hover:text-white transition-colors"
+                                        onclick="chatApp.${msg.isSpeaking ? 'stopSpeech' : 'speakText'}(${index})" title="${msg.isSpeaking ? 'Stop speaking' : 'Listen to message'}">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        ${msg.isSpeaking ? 
+                                            '<path d="M6 6h12v12H6z" />' : 
+                                            '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />'
+                                        }
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                                        onclick="chatApp.copyMessage(\`${msg.text.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, ${index})" title="Copy message">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                                        onclick="chatApp.regenerateResponse(${index})" title="Regenerate response">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full transition-colors ${msg.isLiked ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-green-300'}"
+                                        onclick="chatApp.toggleLike(${index})" title="Like">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                                    </svg>
+                                </button>
+                                <button class="p-1 rounded-full transition-colors ${msg.isDisliked ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-red-300'}"
+                                        onclick="chatApp.toggleDislike(${index})" title="Dislike">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        ` : ''}
+                    `;
+                }
+                
+                this.chatbox.appendChild(messageDiv);
+            }
+
+            formatMessage(text) {
+                // Handle code blocks first
+                const parts = text.split(/(```[\s\S]*?```)/g);
+                
+                return parts.map(part => {
+                    if (part.startsWith('```') && part.endsWith('```')) {
+                        const lines = part.split('\n');
+                        const language = lines[0].replace('```', '').trim();
+                        const code = lines.slice(1, -1).join('\n');
+                        
+                        // Properly escape the code for HTML
+                        const escapedCode = this.escapeHtml(code);
+                        
+                        return `
+                            <div class="my-2">
+                                <div class="bg-gray-800 text-gray-200 rounded-t-lg px-3 py-1 text-xs font-mono flex justify-between items-center">
+                                    <span>${language || 'code'}</span>
+                                    <button onclick="chatApp.copyCode(\`${code.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, this)" class="text-gray-400 hover:text-white transition-colors" title="Copy code">
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <pre class="bg-gray-900 text-gray-100 p-3 rounded-b-lg overflow-x-auto text-sm font-mono"><code>${escapedCode}</code></pre>
+                            </div>
+                        `;
+                    } else {
+                        // Handle inline code
+                        const inlineCodeParts = part.split(/(`[^`]+`)/g);
+                        return inlineCodeParts.map(inlinePart => {
+                            if (inlinePart.startsWith('`') && inlinePart.endsWith('`')) {
+                                const inlineCode = inlinePart.slice(1, -1);
+                                return `<code class="bg-gray-200 text-gray-800 px-1 py-0.5 rounded text-sm font-mono">${this.escapeHtml(inlineCode)}</code>`;
+                            }
+                            return this.escapeHtml(inlinePart);
+                        }).join('');
+                    }
+                }).join('');
+            }
+
+            // Helper function to escape HTML characters
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            async callApi(apiUrl, prompt, prependPersona = false) {
+                if (prependPersona) {
+                    prompt = "You are an AI assistant that can generate images. When the user asks you to generate, create, or make an image, photo, or picture of something, respond with '/image' followed by the description. For example, if they ask for an image of a lion, respond with '/image lion'. Do not apologize or say you can't provide images. When providing code examples, always format them properly using markdown code blocks with the appropriate language identifier (e.g., ```javascript, ```python, ```html, etc.). For HTML code, make sure to provide complete, working examples." + prompt;
+                }
+
+                this.messageInput.value = apiUrl.includes("image-generation-api") ? "Generating..." : "Typing...";
+                this.isLoading = true;
+                this.updateSendButton();
+                this.showTypingIndicator();
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ prompt }),
+                    });
+
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error("Error:", error);
+                    throw error;
+                } finally {
+                    this.messageInput.value = "";
+                    this.isLoading = false;
+                    this.updateSendButton();
+                    this.hideTypingIndicator();
+                }
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                const message = this.messageInput.value.trim();
+                if (!message || this.isLoading) return;
+
+                this.stopSpeech();
+                this.displayMessage(message, true);
+                this.messageInput.value = "";
+
+                const apiUrl = message.startsWith("/image")
+                    ? "https://backend.buildpicoapps.com/aero/run/image-generation-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ=="
+                    : "https://backend.buildpicoapps.com/aero/run/llm-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ==";
+
+                try {
+                    const prependPersona = apiUrl.includes("llm-api");
+                    const originalPrompt = message.startsWith("/image") ? message.substring(6).trim() : message;
+                    const data = await this.callApi(apiUrl, originalPrompt, prependPersona);
+
+                    if (data.status === "success") {
+                        if (message.toLowerCase().startsWith("/image")) {
+                            this.handleImageResponse(data, originalPrompt);
+                        } else {
+                            if (data.text.trim().toLowerCase().startsWith("/image")) {
+                                const imageDescription = data.text.substring(data.text.toLowerCase().indexOf("/image") + 6).trim();
+                                const imageData = await this.callApi(
+                                    "https://backend.buildpicoapps.com/aero/run/image-generation-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ==",
+                                    imageDescription,
+                                    false
+                                );
+                                this.handleImageResponse(imageData, imageDescription);
+                            } else {
+                                this.displayMessage(data.text, false, originalPrompt);
+                            }
+                        }
+                    } else {
+                        this.displayMessage("An error occurred. Please try again.", false, originalPrompt);
+                    }
+                } catch (error) {
+                    this.displayMessage("An error occurred. Please try again.", false, message);
+                }
+            }
+
+            handleImageResponse(imageData, originalPrompt) {
+                if (imageData.status === "success") {
+                    this.displayImage(imageData.imageUrl, originalPrompt);
+                } else {
+                    this.displayMessage("Failed to generate image. Please try again.", false, originalPrompt);
+                }
+            }
+
+            downloadImage(imageUrl) {
+                const a = document.createElement("a");
+                a.href = imageUrl;
+                a.download = "generated-image.png";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+
+            displayLargeImage(imageUrl) {
+                const overlay = document.createElement("div");
+                overlay.className = "fixed top-0 left-0 w-screen h-screen bg-black bg-opacity-70 flex justify-center items-center z-50 p-2";
+                overlay.onclick = () => overlay.remove();
+
+                const img = document.createElement("img");
+                img.src = imageUrl;
+                img.className = "max-w-full max-h-full rounded-lg";
+
+                const downloadBtn = document.createElement("button");
+                downloadBtn.innerHTML = "Download";
+                downloadBtn.className = "absolute bottom-6 md:bottom-10 left-1/2 p-2 text-white rounded bg-green-500 bg-opacity-80 hover:bg-opacity-100 transform -translate-x-1/2";
+                downloadBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.downloadImage(imageUrl);
+                };
+
+                const closeBtn = document.createElement("button");
+                closeBtn.innerHTML = "×";
+                closeBtn.className = "absolute top-6 right-6 p-2 text-red-500 text-2xl rounded-full bg-white bg-opacity-80 hover:bg-opacity-100";
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    overlay.remove();
+                };
+
+                overlay.appendChild(img);
+                overlay.appendChild(downloadBtn);
+                overlay.appendChild(closeBtn);
+                document.body.appendChild(overlay);
+            }
+
+            startSpeechRecognition() {
+                if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    const recognition = new SpeechRecognition();
+
+                    recognition.lang = "en-US";
+                    recognition.interimResults = false;
+                    recognition.maxAlternatives = 1;
+
+                    this.isListening = true;
+                    this.micButton.classList.add('text-red-500');
+                    recognition.start();
+
+                    recognition.onresult = (event) => {
+                        const speechResult = event.results[0][0].transcript;
+                        this.messageInput.value = speechResult;
+                        this.isListening = false;
+                        this.micButton.classList.remove('text-red-500');
+                    };
+
+                    recognition.onerror = () => {
+                        this.isListening = false;
+                        this.micButton.classList.remove('text-red-500');
+                        alert("Speech recognition error. Please try again.");
+                    };
+
+                    recognition.onend = () => {
+                        this.isListening = false;
+                        this.micButton.classList.remove('text-red-500');
+                    };
+                } else {
+                    alert("Speech recognition is not supported in your browser. Try Chrome or Edge.");
+                }
+            }
+
+            speakText(messageIndex) {
+                this.stopSpeech();
+
+                if (!window.speechSynthesis) {
+                    alert("Text-to-speech is not supported in your browser.");
+                    return;
+                }
+
+                const message = this.messages[messageIndex];
+                message.isSpeaking = true;
+                this.rerenderMessage(messageIndex);
+
+                const cleanText = message.text.replace(/```[\s\S]*?```/g, "code block").replace(/`([^`]+)`/g, "$1");
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                const voices = window.speechSynthesis.getVoices();
+                const femaleVoice = voices.find(voice => voice.name.includes("Female") || voice.name.includes("female"));
+                if (femaleVoice) {
+                    utterance.voice = femaleVoice;
+                }
+
+                utterance.onend = () => {
+                    message.isSpeaking = false;
+                    this.rerenderMessage(messageIndex);
+                    this.speechSynthesis = null;
+                };
+
+                this.speechSynthesis = utterance;
+                window.speechSynthesis.speak(utterance);
+            }
+
+            stopSpeech() {
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    this.messages.forEach((msg, index) => {
+                        if (msg.isSpeaking) {
+                            msg.isSpeaking = false;
+                            this.rerenderMessage(index);
+                        }
+                    });
+                    this.speechSynthesis = null;
+                }
+            }
+
+            async copyMessage(text, messageIndex) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    alert("Message copied to clipboard!");
+                } catch (err) {
+                    console.error("Failed to copy text: ", err);
+                    alert("Failed to copy message");
+                }
+            }
+
+            async copyCode(code, button) {
+                try {
+                    await navigator.clipboard.writeText(code);
+                    const originalText = button.innerHTML;
+                    button.innerHTML = '<span class="text-green-400">Copied!</span>';
+                    setTimeout(() => {
+                        button.innerHTML = originalText;
+                    }, 2000);
+                } catch (err) {
+                    console.error("Failed to copy code: ", err);
+                    alert("Failed to copy code");
+                }
+            }
+
+            async regenerateResponse(messageIndex) {
+                const message = this.messages[messageIndex];
+                if (!message.originalPrompt) return;
+
+                this.stopSpeech();
+                this.messages.splice(messageIndex, 1);
+                this.rerenderAllMessages();
+
+                const apiUrl = message.originalPrompt.startsWith("/image") || message.isImage
+                    ? "https://backend.buildpicoapps.com/aero/run/image-generation-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ=="
+                    : "https://backend.buildpicoapps.com/aero/run/llm-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ==";
+
+                try {
+                    const prependPersona = apiUrl.includes("llm-api");
+                    const data = await this.callApi(apiUrl, message.originalPrompt, prependPersona);
+
+                    if (data.status === "success") {
+                        if (message.isImage || message.originalPrompt.startsWith("/image")) {
+                            this.handleImageResponse(data, message.originalPrompt);
+                        } else {
+                            if (data.text.trim().toLowerCase().startsWith("/image")) {
+                                const imageDescription = data.text.substring(data.text.toLowerCase().indexOf("/image") + 6).trim();
+                                const imageData = await this.callApi(
+                                    "https://backend.buildpicoapps.com/aero/run/image-generation-api?pk=v1-Z0FBQUFBQm4wR1RDbXpzX2NQbDFsMEoycHRuM0ZxZUhmVkY4enBYVkR6bXZVQ3Y4NWNwREozQTVwS2k0UDBOM2d6VW80MFlGX21kLWRjN0tyLUdvYXVKczNTQzRjdEFZc0E9PQ==",
+                                    imageDescription,
+                                    false
+                                );
+                                this.handleImageResponse(imageData, imageDescription);
+                            } else {
+                                this.displayMessage(data.text, false, message.originalPrompt);
+                            }
+                        }
+                    } else {
+                        this.displayMessage("An error occurred. Please try again.", false, message.originalPrompt);
+                    }
+                } catch (error) {
+                    this.displayMessage("An error occurred. Please try again.", false, message.originalPrompt);
+                }
+            }
+
+            toggleLike(messageIndex) {
+                const message = this.messages[messageIndex];
+                message.isLiked = !message.isLiked;
+                if (message.isLiked) message.isDisliked = false;
+                this.rerenderMessage(messageIndex);
+            }
+
+            toggleDislike(messageIndex) {
+                const message = this.messages[messageIndex];
+                message.isDisliked = !message.isDisliked;
+                if (message.isDisliked) message.isLiked = false;
+                this.rerenderMessage(messageIndex);
+            }
+
+            rerenderMessage(messageIndex) {
+                const messageElements = this.chatbox.children;
+                if (messageElements[messageIndex]) {
+                    const newMessageDiv = document.createElement('div');
+                    this.renderMessage(this.messages[messageIndex], messageIndex);
+                    messageElements[messageIndex].replaceWith(this.chatbox.lastChild);
+                }
+            }
+
+            rerenderAllMessages() {
+                this.chatbox.innerHTML = '';
+                this.messages.forEach((msg, index) => {
+                    this.renderMessage(msg, index);
+                });
+                this.scrollToBottom();
+            }
+
+            updateSendButton() {
+                if (this.isLoading) {
+                    this.sendButton.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>';
+                    this.sendButton.disabled = true;
+                } else {
+                    this.sendButton.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>';
+                    this.sendButton.disabled = false;
+                }
+            }
+
+            scrollToBottom() {
+                setTimeout(() => {
+                    this.chatbox.scrollTop = this.chatbox.scrollHeight;
+                }, 100);
+            }
+        }
+
+        // Initialize the chat app
+        const chatApp = new ChatApp();
+
+        // Global functions for onclick handlers
+        window.chatApp = chatApp;
+    </script>
+</body>
+</html>
